@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0d0f12">
+<title>Notepad V2</title>
+<style>
+:root{--bg:#0d0f12;--panel:#15181d;--panel2:#1d2128;--text:#f5f7fa;--muted:#9ba3af;--accent:#7c5cff;--border:#2a3039}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+button,input,textarea{font:inherit}button{border:0;color:var(--text);cursor:pointer}
+.app{min-height:100vh;max-width:900px;margin:auto}
+header{position:sticky;top:0;z-index:10;background:rgba(13,15,18,.96);backdrop-filter:blur(16px);padding:15px 16px 12px;border-bottom:1px solid var(--border)}
+.top{display:flex;align-items:center;justify-content:space-between;gap:10px}.logo{font-size:23px;font-weight:800}.version{font-size:12px;color:var(--muted)}
+.actions{display:flex;gap:7px}.new,.primary{background:var(--accent);padding:10px 14px;border-radius:12px;font-weight:750}
+.search{margin-top:12px;width:100%;background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:12px 14px;color:var(--text);outline:none}
+main{padding:16px}.meta{display:flex;justify-content:space-between;color:var(--muted);font-size:13px;margin:0 2px 12px}
+.toolbar{display:flex;gap:8px;margin-bottom:13px}.select,.secondary{background:var(--panel2);border:1px solid var(--border);color:var(--text);border-radius:11px;padding:10px 12px}.select{flex:1;min-width:0}
+.notebook{background:var(--panel);border:1px solid var(--border);border-radius:15px;margin-bottom:12px;overflow:hidden}
+.nb-head{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:14px 15px;background:#181b21}
+.nb-title{font-weight:800;font-size:16px}.nb-count{font-size:12px;color:var(--muted);margin-left:7px}
+.note{padding:13px 15px;border-top:1px solid var(--border);cursor:pointer}.note:active{background:var(--panel2)}
+.note-title{font-weight:700;font-size:16px}.preview{color:#9da6b3;font-size:13px;line-height:1.4;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.date{color:#68717d;font-size:10px;margin-top:6px}
+.empty{text-align:center;color:var(--muted);padding:70px 25px}.empty b{display:block;color:var(--text);font-size:20px;margin-bottom:7px}
+.overlay{position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:30;display:none}
+.sheet{position:absolute;left:0;right:0;bottom:0;background:var(--panel);border-radius:20px 20px 0 0;padding:18px;max-height:94vh;overflow:auto}
+@media(min-width:700px){.sheet{left:50%;right:auto;bottom:auto;top:50%;transform:translate(-50%,-50%);width:min(700px,94vw);border-radius:20px}}
+.editorbar{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:10px}.editorbar b{font-size:18px}
+.field{width:100%;background:var(--panel2);border:1px solid var(--border);border-radius:11px;color:var(--text);padding:12px;outline:none;margin-bottom:9px}
+textarea.field{min-height:45vh;resize:none;line-height:1.55}
+.row{display:flex;gap:8px}.row>*{flex:1}.close{background:var(--panel2);padding:9px 12px;border-radius:10px}
+.danger{background:#432027;color:#ffabb5;padding:9px 12px;border-radius:10px}.footer{display:flex;justify-content:space-between;align-items:center;color:var(--muted);font-size:12px}
+</style>
+</head>
+<body>
+<div class="app">
+<header>
+  <div class="top">
+    <div class="logo">Notepad <span class="version">V2</span></div>
+    <div class="actions">
+      <button type="button" class="secondary" onclick="createNotebook()">＋ Notebook</button>
+      <button type="button" class="new" onclick="newNote()">＋ New</button>
+    </div>
+  </div>
+  <input id="search" class="search" placeholder="Search notes or notebooks…" oninput="render()">
+</header>
+<main>
+  <div class="meta"><span id="count">0 notes</span><span id="nbCount">0 notebooks</span></div>
+  <div class="toolbar">
+    <select id="filter" class="select" onchange="render()"></select>
+  </div>
+  <div id="list"></div>
+</main>
+</div>
+
+<div id="noteOverlay" class="overlay">
+<section class="sheet">
+  <div class="editorbar"><b id="editorLabel">New Note</b><div class="actions"><button type="button" class="close" onclick="closeNote()">✕</button><button type="button" class="primary" onclick="saveNote()">Save</button></div></div>
+  <select id="noteNotebook" class="field"></select>
+  <input id="title" class="field" maxlength="160" placeholder="Note title">
+  <textarea id="body" class="field" placeholder="Start writing…"></textarea>
+  <div class="footer"><span id="wordCount">0 words</span><button type="button" id="deleteBtn" class="danger" onclick="deleteNote()" style="display:none">Delete</button></div>
+</section>
+</div>
+
+<div id="nbOverlay" class="overlay">
+<section class="sheet">
+  <div class="editorbar"><b id="nbLabel">New Notebook</b><button type="button" class="close" onclick="closeNotebook()">✕</button></div>
+  <input id="nbName" class="field" maxlength="80" placeholder="Notebook name">
+  <div class="row"><button type="button" class="primary" onclick="saveNotebook()">Create Notebook</button><button type="button" class="close" onclick="closeNotebook()">Cancel</button></div>
+</section>
+</div>
+
+<script>
+const KEY="notepad_v1_data";
+const oldKey="notepad_v1_notes";
+let data=JSON.parse(localStorage.getItem(KEY)||"null");
+if(!data){
+  const old=JSON.parse(localStorage.getItem(oldKey)||"[]");
+  data={notebooks:[{id:"default",name:"General"}],notes:old.map(n=>({...n,notebookId:"default"}))};
+  persist();
+}
+let editingId=null;
+
+function persist(){localStorage.setItem(KEY,JSON.stringify(data))}
+function uid(){return Date.now().toString(36)+"-"+Math.random().toString(36).slice(2,10)}
+function esc(s){return String(s||"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[c]))}
+function fmt(ts){return new Date(ts).toLocaleString([], {month:"short",day:"numeric",year:"numeric",hour:"numeric",minute:"2-digit"})}
+function getNotebook(id){return data.notebooks.find(n=>n.id===id)}
+function renderFilters(){
+ const f=document.getElementById("filter"), old=f.value;
+ f.innerHTML='<option value="all">All notebooks</option>'+data.notebooks.map(n=>`<option value="${n.id}">${esc(n.name)}</option>`).join("");
+ f.value=data.notebooks.some(n=>n.id===old)?old:"all";
+}
+function render(){
+ renderFilters();
+ const q=document.getElementById("search").value.toLowerCase().trim(), filter=document.getElementById("filter").value;
+ let notes=data.notes.filter(n=>(!q||(n.title+" "+n.body+" "+(getNotebook(n.notebookId)?.name||"")).toLowerCase().includes(q))&&(filter==="all"||n.notebookId===filter)).sort((a,b)=>b.updated-a.updated);
+ document.getElementById("count").textContent=`${notes.length} ${notes.length===1?"note":"notes"}`;
+ document.getElementById("nbCount").textContent=`${data.notebooks.length} ${data.notebooks.length===1?"notebook":"notebooks"}`;
+ const list=document.getElementById("list");
+ if(!notes.length){list.innerHTML='<div class="empty"><b>No notes found</b><span>Tap ＋ New to create one.</span></div>';return}
+ let groups=[];
+ for(const nb of data.notebooks){
+   const arr=notes.filter(n=>n.notebookId===nb.id);
+   if(arr.length)groups.push(`<section class="notebook"><div class="nb-head"><span class="nb-title">NOTEBOOK: ${esc(nb.name)}<span class="nb-count">${arr.length}</span></span><button type="button" class="danger" onclick="event.stopPropagation();deleteNotebook('${nb.id}')">Delete</button></div>${arr.map(n=>`<article class="note" onclick="openNote('${n.id}')"><div class="note-title">NOTE: ${esc(n.title||"Untitled")} <button type="button" class="danger" style="float:right;padding:5px 8px;font-size:11px" onclick="event.stopPropagation();deleteNoteDirect('${n.id}')">Delete</button></div><div class="preview">${esc(n.body||"No content yet")}</div><div class="date">${fmt(n.updated)}</div></article>`).join("")}</section>`);
+ }
+ list.innerHTML=groups.join("")||'<div class="empty"><b>No matching notes</b><span>Try another search.</span></div>';
+}
+function populateNoteBooks(selected){
+ const s=document.getElementById("noteNotebook");
+ s.innerHTML=data.notebooks.map(n=>`<option value="${n.id}">${esc(n.name)}</option>`).join("");
+ s.value=data.notebooks.some(n=>n.id===selected)?selected:data.notebooks[0].id;
+}
+function newNote(){
+ editingId=null;document.getElementById("editorLabel").textContent="New Note";
+ document.getElementById("title").value="";document.getElementById("body").value="";
+ populateNoteBooks(document.getElementById("filter").value==="all"?data.notebooks[0].id:document.getElementById("filter").value);
+ document.getElementById("deleteBtn").style.display="none";document.getElementById("noteOverlay").style.display="block";updateWords();
+ setTimeout(()=>document.getElementById("title").focus(),80);
+}
+function openNote(id){
+ const n=data.notes.find(x=>x.id===id);if(!n)return;editingId=id;
+ document.getElementById("editorLabel").textContent="Edit Note";document.getElementById("title").value=n.title;
+ document.getElementById("body").value=n.body;populateNoteBooks(n.notebookId);
+ document.getElementById("deleteBtn").style.display="block";document.getElementById("noteOverlay").style.display="block";updateWords();
+}
+function saveNote(){
+ const title=document.getElementById("title").value.trim()||"Untitled", body=document.getElementById("body").value, notebookId=document.getElementById("noteNotebook").value;
+ if(editingId){const n=data.notes.find(x=>x.id===editingId);Object.assign(n,{title,body,notebookId,updated:Date.now()})}
+ else data.notes.push({id:uid(),title,body,notebookId,updated:Date.now()});
+ persist();closeNote();render();
+}
+function deleteNote(){if(editingId&&confirm("Delete this note?")){data.notes=data.notes.filter(n=>n.id!==editingId);persist();closeNote();render()}}
+function closeNote(){document.getElementById("noteOverlay").style.display="none";editingId=null}
+function deleteNoteDirect(id){
+ const n=data.notes.find(x=>x.id===id);
+ if(!n)return;
+ if(confirm(`Delete "${n.title||"Untitled"}"?`)){
+  data.notes=data.notes.filter(x=>x.id!==id);
+  persist();render();
+ }
+}
+function deleteNotebook(id){
+ const nb=getNotebook(id);
+ if(!nb)return;
+ const count=data.notes.filter(n=>n.notebookId===id).length;
+ if(data.notebooks.length<=1){alert("You must keep at least one notebook.");return}
+ const message=count?`Delete "${nb.name}" and its ${count} note${count===1?"":"s"}?`:`Delete "${nb.name}"?`;
+ if(confirm(message)){
+  data.notebooks=data.notebooks.filter(x=>x.id!==id);
+  data.notes=data.notes.filter(n=>n.notebookId!==id);
+  persist();render();
+ }
+}
+function createNotebook(){document.getElementById("nbName").value="";document.getElementById("nbOverlay").style.display="block";setTimeout(()=>document.getElementById("nbName").focus(),80)}
+function saveNotebook(){
+ const name=document.getElementById("nbName").value.trim();if(!name)return;
+ data.notebooks.push({id:uid(),name});persist();closeNotebook();render();
+}
+function closeNotebook(){document.getElementById("nbOverlay").style.display="none"}
+function updateWords(){const t=document.getElementById("body").value.trim();document.getElementById("wordCount").textContent=`${t?t.split(/\s+/).length:0} words`}
+document.getElementById("body").addEventListener("input",updateWords);
+document.getElementById("noteOverlay").addEventListener("click",e=>{if(e.target.id==="noteOverlay")closeNote()});
+document.getElementById("nbOverlay").addEventListener("click",e=>{if(e.target.id==="nbOverlay")closeNotebook()});
+document.addEventListener("keydown",e=>{if(e.key==="Escape"){closeNote();closeNotebook()}if((e.ctrlKey||e.metaKey)&&e.key==="Enter"&&document.getElementById("noteOverlay").style.display==="block")saveNote()});
+render();
+</script>
+</body>
+</html>
